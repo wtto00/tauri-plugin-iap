@@ -19,9 +19,8 @@ func purchaseSubscription(
   productId: SRString, callback_complete: AppleCallback, callback_error: AppleCallback
 ) {
   print(Tag, "Apple in-app purchase")
-  let productIds = Set(productId.toString().components(separatedBy: ","))
-  ProductManager.shared.requestProducts(
-    for: productIds,
+  ProductRequest.shared.requestProducts(
+    for: [productId.toString()],
     completionHandler: { products, error in
       print(Tag, "Apple in-app products - callback")
       if let error = error {
@@ -52,9 +51,9 @@ func purchaseSubscription(
 func queryProducts(
   productId: SRString, callback_complete: AppleCallback, callback_error: AppleCallback
 ) {
-  print(Tag, "Apple in-app purchase - get products")
-  ProductManager.shared.requestProducts(
-    for: [productId.toString()],
+  print(Tag, "Apple in-app purchase - query products")
+  ProductRequest.shared.requestProducts(
+    for: [Set(productId.toString().components(separatedBy: ",")).first!],
     completionHandler: { products, error in
       if let error = error {
         print(Tag, "Apple in-app products - got an error")
@@ -66,10 +65,6 @@ func queryProducts(
         print(Tag, "Apple in-app products - found a product")
         var skProducts = []
         for product in products {
-          var discounts: [[String: String]] = []
-          if #available(iOS 12.2, *) {
-            discounts = discountsToString(discounts: product.discounts)
-          }
           let skProduct: [String: Any] = [
             "productIdentifier": product.productIdentifier,
             "price": product.price.stringValue,
@@ -79,7 +74,7 @@ func queryProducts(
             "subscriptionPeriod": getSubscriptionPeriod(
               subscriptionPeriod: product.subscriptionPeriod),
             "introductoryPrice": discountToString(discount: product.introductoryPrice),
-            "discounts": discounts,
+            "discounts": discountsToString(discounts: product.discounts),
           ]
           skProducts.append(skProduct)
         }
@@ -194,8 +189,8 @@ func getSubscriptionPeriod(subscriptionPeriod: SKProductSubscriptionPeriod?) -> 
   return ""
 }
 
-class ProductManager: NSObject, SKProductsRequestDelegate {
-  static let shared = ProductManager()
+class ProductRequest: NSObject, SKProductsRequestDelegate {
+  static let shared = ProductRequest()
   private var productsRequest: SKProductsRequest?
   private var productsCompletionHandler: (([SKProduct]?, Error?) -> Void)?
 
@@ -203,14 +198,17 @@ class ProductManager: NSObject, SKProductsRequestDelegate {
     for productIDs: Set<String>, completionHandler: @escaping ([SKProduct]?, Error?) -> Void
   ) {
     print(Tag, "requestProducts: ", productIDs)
+    productsRequest?.cancel()
     productsCompletionHandler = completionHandler
+
     productsRequest = SKProductsRequest(productIdentifiers: productIDs)
-    productsRequest?.delegate = self
-    productsRequest?.start()
+    productsRequest!.delegate = self
+    productsRequest!.start()
   }
 
   func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
     let products = response.products
+    print(Tag, "productsRequest response: ", products.count)
     let invalidProductIdentifiers = response.invalidProductIdentifiers
 
     // Handle valid products
@@ -220,11 +218,29 @@ class ProductManager: NSObject, SKProductsRequestDelegate {
     for invalidProductIdentifier in invalidProductIdentifiers {
       print("Invalid product identifier: \(invalidProductIdentifier)")
     }
+
+    clearRequestAndHandler()
   }
 
   func productsRequest(_ request: SKProductsRequest, didFailWithError error: Error) {
     // Handle request failure
+    print(Tag, "productsRequest error: ",error.localizedDescription)
     productsCompletionHandler?(nil, error)
+    clearRequestAndHandler()
+  }
+    
+  func requestDidFinish(_ request: SKRequest) {
+    print(Tag, "productsRequest - requestDidFinish")
+  }
+  func request(_ request: SKRequest, didFailWithError error: any Error) {
+    print(Tag, "productsRequest - didFailWithError: ",error.localizedDescription)
+    productsCompletionHandler?(nil, error)
+    clearRequestAndHandler()
+  }
+
+  private func clearRequestAndHandler() {
+    productsRequest = nil
+    productsCompletionHandler = nil
   }
 }
 

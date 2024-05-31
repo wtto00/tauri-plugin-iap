@@ -1,11 +1,12 @@
-use std::{collections::HashSet, ffi::c_void};
+use std::{ffi::c_void, sync::Mutex};
 
+use once_cell::sync::OnceCell;
 use serde_json::Value as JsonValue;
 use swift_rs::{swift, Bool, SRString, SwiftArg};
 use tauri::{
     command,
     plugin::{Builder, TauriPlugin},
-    AppHandle, Manager, Runtime, State, Window,
+    AppHandle, EventLoopMessage, Manager, Runtime, State, Window, Wry,
 };
 
 type AppleCallbackFn = unsafe extern "C" fn(*const c_void, size: i32);
@@ -19,11 +20,11 @@ impl<'a> SwiftArg<'a> for AppleCallback {
     }
 }
 
-swift!(fn is_available() -> Bool);
-swift!(fn query_products(product_id: SRString, success: AppleCallback, error: AppleCallback));
-
 type IAPResult = std::result::Result<JsonValue, String>;
 
+static APP_HANDLE: OnceCell<Mutex<AppHandle>> = OnceCell::new();
+
+swift!(fn is_available() -> Bool);
 /// Check IAP is available or not.
 #[command]
 fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPResult {
@@ -36,6 +37,7 @@ fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPR
     Ok(JsonValue::Bool(available))
 }
 
+swift!(fn query_products(product_id: SRString, success: AppleCallback, error: AppleCallback));
 #[command]
 fn query_product_details<R: Runtime>(
     _app: AppHandle<R>,
@@ -46,15 +48,23 @@ fn query_product_details<R: Runtime>(
         let data_slice = unsafe { std::slice::from_raw_parts(arg1 as *const u8, size as usize) };
         let data_str = std::str::from_utf8(data_slice).unwrap();
         println!("success_callback data_str: {:?}", data_str);
+        let app = APP_HANDLE.get().unwrap().lock();
+        if let Ok(app_handle) = app {
+            app_handle.emit_all("products-update", data_str).unwrap();
+        }
     }
     unsafe extern "C" fn error_callback(arg1: *const c_void, size: i32) {
         let data_slice = unsafe { std::slice::from_raw_parts(arg1 as *const u8, size as usize) };
         let data_str = std::str::from_utf8(data_slice).unwrap();
         println!("error_callback data_str: {:?}", data_str);
+        let app = APP_HANDLE.get().unwrap().lock();
+        if let Ok(app_handle) = app {
+            app_handle.emit_all("exception", data_str).unwrap();
+        }
     }
     unsafe {
         query_products(
-            SRString::from(identifiers.join(",").as_str()),
+            identifiers.join(",").as_str().into(),
             AppleCallback(success_callback),
             AppleCallback(error_callback),
         );
@@ -63,20 +73,16 @@ fn query_product_details<R: Runtime>(
 }
 
 /// Initializes the plugin.
-pub fn init<R: Runtime>() -> TauriPlugin<R> {
+pub fn init() -> TauriPlugin<Wry> {
     Builder::new("iap")
         .invoke_handler(tauri::generate_handler![
             can_make_payments,
             query_product_details
         ])
-        .setup(|app: &AppHandle<R>| {
-            // let mut iap = IAP::default();
-            // let handle = app.app_handle();
-            // let _ = iap
-            //     .init(move |event, payload| {
-            //         let _ = handle.emit_all(event, payload);
-            //     })
-            //     .or_else(|e| app.emit_all("exception", e));
+        .setup(|app| {
+            APP_HANDLE
+                .set(Mutex::new(app.app_handle().to_owned()))
+                .unwrap();
             // app.manage(iap);
             Ok(())
         })
