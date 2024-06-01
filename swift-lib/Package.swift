@@ -4,25 +4,22 @@
 import PackageDescription
 
 let package = Package(
-  name: "TauriIAP",
+  name: "tauri-iap",
   platforms: [
     .macOS(.v10_15)
   ],
   products: [
     .library(
-      name: "TauriIAP",
+      name: "tauri-iap",
       type: .static,
-      targets: ["TauriIAP"]
+      targets: ["tauri-iap"]
     )
   ],
-  dependencies: [
-    .package(url: "https://github.com/Brendonovich/swift-rs", from: "1.0.6")
-  ],
+  dependencies: [],
   targets: [
     .target(
-      name: "TauriIAP",
-      dependencies: [.product(name: "SwiftRs", package: "swift-rs")],
-      path: "",
+      name: "tauri-iap",
+      dependencies: [],
       linkerSettings: [
         .linkedFramework("StoreKit")
       ]

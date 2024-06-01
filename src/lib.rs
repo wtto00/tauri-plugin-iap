@@ -1,67 +1,54 @@
-use std::{ffi::c_void, sync::Mutex};
-
 use once_cell::sync::OnceCell;
+use serde::{ser::Serializer, Serialize};
 use serde_json::Value as JsonValue;
-use swift_rs::{swift, Bool, SRString, SwiftArg};
 use tauri::{
-    command, plugin::{Builder, TauriPlugin}, AppHandle, Manager, Runtime, Window, Wry
+    command,
+    plugin::{Builder, TauriPlugin},
+    AppHandle, Manager, Runtime, State, Window, Wry,
 };
 
-type AppleCallbackFn = unsafe extern "C" fn(*const c_void, size: i32);
-pub struct AppleCallback(pub AppleCallbackFn);
+use std::{collections::HashMap, sync::Mutex};
 
-impl<'a> SwiftArg<'a> for AppleCallback {
-    type ArgType = AppleCallbackFn;
+mod bridge;
+mod product;
+mod exception;
 
-    unsafe fn as_arg(&'a self) -> Self::ArgType {
-        self.0
+type IAPResult = std::result::Result<JsonValue, Error>;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+impl Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
     }
 }
 
-type IAPResult = std::result::Result<JsonValue, String>;
+#[derive(Default)]
+struct MyState(Mutex<HashMap<String, String>>);
 
 static APP_HANDLE: OnceCell<Mutex<AppHandle>> = OnceCell::new();
 
-swift!(fn is_available() -> Bool);
 /// Check IAP is available or not.
 #[command]
 fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPResult {
-    let available = unsafe { is_available() };
+    let available = bridge::swift_can_make_payments();
     Ok(JsonValue::Bool(available))
 }
 
-swift!(fn query_products(product_id: SRString, success: AppleCallback, error: AppleCallback));
 #[command]
-fn query_product_details<R: Runtime>(
+fn query_products<R: Runtime>(
     _app: AppHandle<R>,
     _window: Window<R>,
     identifiers: Vec<String>,
 ) -> IAPResult {
-    unsafe extern "C" fn success_callback(arg1: *const c_void, size: i32) {
-        let data_slice = unsafe { std::slice::from_raw_parts(arg1 as *const u8, size as usize) };
-        let data_str = std::str::from_utf8(data_slice).unwrap();
-        println!("success_callback data_str: {:?}", data_str);
-        let app = APP_HANDLE.get().unwrap().lock();
-        if let Ok(app_handle) = app {
-            app_handle.emit_all("products-update", data_str).unwrap();
-        }
-    }
-    unsafe extern "C" fn error_callback(arg1: *const c_void, size: i32) {
-        let data_slice = unsafe { std::slice::from_raw_parts(arg1 as *const u8, size as usize) };
-        let data_str = std::str::from_utf8(data_slice).unwrap();
-        println!("error_callback data_str: {:?}", data_str);
-        let app = APP_HANDLE.get().unwrap().lock();
-        if let Ok(app_handle) = app {
-            app_handle.emit_all("exception", data_str).unwrap();
-        }
-    }
-    unsafe {
-        query_products(
-            identifiers.join(",").as_str().into(),
-            AppleCallback(success_callback),
-            AppleCallback(error_callback),
-        );
-    }
+    bridge::swift_query_products(identifiers);
     Ok(JsonValue::Null)
 }
 
@@ -70,13 +57,14 @@ pub fn init() -> TauriPlugin<Wry> {
     Builder::new("iap")
         .invoke_handler(tauri::generate_handler![
             can_make_payments,
-            query_product_details
+            query_products,
         ])
         .setup(|app| {
             APP_HANDLE
                 .set(Mutex::new(app.app_handle().to_owned()))
                 .unwrap();
-            // app.manage(iap);
+
+            app.manage(MyState::default());
             Ok(())
         })
         .build()

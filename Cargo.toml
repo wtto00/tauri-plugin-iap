@@ -1,17 +1,22 @@
 [package]
 name = "tauri-plugin-iap"
 version = "0.0.1"
-authors = ["wtto00"]
+authors = [ "wtto00" ]
 description = ""
 edition = "2021"
 rust-version = "1.60"
 exclude = ["/examples", "/webview-dist", "/webview-src", "node_modules"]
 
+# [lib]
+# crate-type = ["staticlib"]
+
 [dependencies]
 tauri = { version = "1.6.0" }
+serde = "1.0"
+thiserror = "1.0"
+swift-bridge = "0.1.55"
 serde_json = "1.0.117"
-swift-rs = "1.0.6"
 once_cell = "1.19.0"
 
 [build-dependencies]
-swift-rs = { version = "1.0.6", features = ["build"] }
+swift-bridge-build = "0.1.55"
