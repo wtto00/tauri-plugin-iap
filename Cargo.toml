@@ -12,8 +12,6 @@ tauri = { version = "1.6.0" }
 serde_json = "1.0.117"
 swift-rs = "1.0.6"
 once_cell = "1.19.0"
-tauri-runtime = "0.14.3"
-tauri-runtime-wry = "0.14.8"
 
 [build-dependencies]
 swift-rs = { version = "1.0.6", features = ["build"] }

@@ -4,9 +4,7 @@ use once_cell::sync::OnceCell;
 use serde_json::Value as JsonValue;
 use swift_rs::{swift, Bool, SRString, SwiftArg};
 use tauri::{
-    command,
-    plugin::{Builder, TauriPlugin},
-    AppHandle, EventLoopMessage, Manager, Runtime, State, Window, Wry,
+    command, plugin::{Builder, TauriPlugin}, AppHandle, Manager, Runtime, Window, Wry
 };
 
 type AppleCallbackFn = unsafe extern "C" fn(*const c_void, size: i32);
@@ -28,11 +26,6 @@ swift!(fn is_available() -> Bool);
 /// Check IAP is available or not.
 #[command]
 fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPResult {
-    // unsafe extern "C" fn callback(arg1: *const c_void, size: i32) {
-    //     let data_slice = unsafe { std::slice::from_raw_parts(arg1 as *const u8, size as usize) };
-    //     let data_str = std::str::from_utf8(data_slice).unwrap();
-    //     println!("data_str: {:?}", data_str);
-    // }
     let available = unsafe { is_available() };
     Ok(JsonValue::Bool(available))
 }

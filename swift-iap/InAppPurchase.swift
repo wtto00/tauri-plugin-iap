@@ -53,7 +53,7 @@ func queryProducts(
 ) {
   print(Tag, "Apple in-app purchase - query products")
   ProductRequest.shared.requestProducts(
-    for: [Set(productId.toString().components(separatedBy: ",")).first!],
+    for: Set(productId.toString().components(separatedBy: ",")),
     completionHandler: { products, error in
       if let error = error {
         print(Tag, "Apple in-app products - got an error")
