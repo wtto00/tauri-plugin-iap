@@ -7,11 +7,11 @@ use tauri::{
     command, plugin::{Builder, TauriPlugin}, AppHandle, Manager, Runtime, Window, Wry
 };
 
-type AppleCallbackFn = unsafe extern "C" fn(*const c_void, size: i32);
-pub struct AppleCallback(pub AppleCallbackFn);
+type SwiftCallbackFn = unsafe extern "C" fn(*const c_void, size: i32);
+pub struct SwiftCallback(pub SwiftCallbackFn);
 
-impl<'a> SwiftArg<'a> for AppleCallback {
-    type ArgType = AppleCallbackFn;
+impl<'a> SwiftArg<'a> for SwiftCallback {
+    type ArgType = SwiftCallbackFn;
 
     unsafe fn as_arg(&'a self) -> Self::ArgType {
         self.0
@@ -22,17 +22,17 @@ type IAPResult = std::result::Result<JsonValue, String>;
 
 static APP_HANDLE: OnceCell<Mutex<AppHandle>> = OnceCell::new();
 
-swift!(fn is_available() -> Bool);
+swift!(fn swift_can_make_payments() -> Bool);
 /// Check IAP is available or not.
 #[command]
 fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPResult {
-    let available = unsafe { is_available() };
+    let available = unsafe { swift_can_make_payments() };
     Ok(JsonValue::Bool(available))
 }
 
-swift!(fn query_products(product_id: SRString, success: AppleCallback, error: AppleCallback));
+swift!(fn swift_query_products(product_id: SRString, success: SwiftCallback, error: SwiftCallback));
 #[command]
-fn query_product_details<R: Runtime>(
+fn query_products<R: Runtime>(
     _app: AppHandle<R>,
     _window: Window<R>,
     identifiers: Vec<String>,
@@ -43,7 +43,7 @@ fn query_product_details<R: Runtime>(
         println!("success_callback data_str: {:?}", data_str);
         let app = APP_HANDLE.get().unwrap().lock();
         if let Ok(app_handle) = app {
-            app_handle.emit_all("products-update", data_str).unwrap();
+            app_handle.emit_all("plugin:iap_products-updated", data_str).unwrap();
         }
     }
     unsafe extern "C" fn error_callback(arg1: *const c_void, size: i32) {
@@ -52,14 +52,14 @@ fn query_product_details<R: Runtime>(
         println!("error_callback data_str: {:?}", data_str);
         let app = APP_HANDLE.get().unwrap().lock();
         if let Ok(app_handle) = app {
-            app_handle.emit_all("exception", data_str).unwrap();
+            app_handle.emit_all("plugin:iap_exception", data_str).unwrap();
         }
     }
     unsafe {
-        query_products(
+        swift_query_products(
             identifiers.join(",").as_str().into(),
-            AppleCallback(success_callback),
-            AppleCallback(error_callback),
+            SwiftCallback(success_callback),
+            SwiftCallback(error_callback),
         );
     }
     Ok(JsonValue::Null)
@@ -70,7 +70,7 @@ pub fn init() -> TauriPlugin<Wry> {
     Builder::new("iap")
         .invoke_handler(tauri::generate_handler![
             can_make_payments,
-            query_product_details
+            query_products
         ])
         .setup(|app| {
             APP_HANDLE

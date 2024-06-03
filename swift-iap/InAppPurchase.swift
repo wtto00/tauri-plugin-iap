@@ -4,19 +4,19 @@
 import StoreKit
 import SwiftRs
 
-typealias AppleCallback = @convention(c) (UnsafeRawPointer?, Int32) -> Void
+typealias SwiftCallback = @convention(c) (UnsafeRawPointer?, Int32) -> Void
 
 let Tag = "TauriIAP:"
 
-@_cdecl("is_available")
-func isAvailable() -> Bool {
-  print(Tag, "isAvailable")
+@_cdecl("swift_can_make_payments")
+func canMakePayments() -> Bool {
+  print(Tag, "canMakePayments")
   return SKPaymentQueue.canMakePayments()
 }
 
 @_cdecl("purchase_subscription")
 func purchaseSubscription(
-  productId: SRString, callback_complete: AppleCallback, callback_error: AppleCallback
+  productId: SRString, callback_complete: SwiftCallback, callback_error: SwiftCallback
 ) {
   print(Tag, "Apple in-app purchase")
   ProductRequest.shared.requestProducts(
@@ -47,9 +47,9 @@ func purchaseSubscription(
     })
 }
 
-@_cdecl("query_products")
+@_cdecl("swift_query_products")
 func queryProducts(
-  productId: SRString, callback_complete: AppleCallback, callback_error: AppleCallback
+  productId: SRString, callback_complete: SwiftCallback, callback_error: SwiftCallback
 ) {
   print(Tag, "Apple in-app purchase - query products")
   ProductRequest.shared.requestProducts(
@@ -85,7 +85,7 @@ func queryProducts(
     })
 }
 
-func emitCallback(data: Any, callback: AppleCallback?) {
+func emitCallback(data: Any, callback: SwiftCallback?) {
   let serializedData = try! JSONSerialization.data(withJSONObject: data)
   let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
   let dataSize = serializedData.count
@@ -246,8 +246,8 @@ class ProductRequest: NSObject, SKProductsRequestDelegate {
 
 class SubscriptionManager: NSObject, SKPaymentTransactionObserver {
   static let shared = SubscriptionManager()
-  var successBlock: AppleCallback?
-  var errorBlock: AppleCallback?
+  var successBlock: SwiftCallback?
+  var errorBlock: SwiftCallback?
 
   override init() {
     super.init()
@@ -255,7 +255,7 @@ class SubscriptionManager: NSObject, SKPaymentTransactionObserver {
   }
 
   func purchaseSubscription(
-    product: SKProduct, callback_complete: AppleCallback, callback_error: AppleCallback
+    product: SKProduct, callback_complete: SwiftCallback, callback_error: SwiftCallback
   ) {
     self.successBlock = callback_complete
     self.errorBlock = callback_error

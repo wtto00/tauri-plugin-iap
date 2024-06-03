@@ -9,5 +9,4 @@ package-lock.json
 yarn.lock
 
 /target
-Cargo.lock
 node_modules/
