@@ -22,6 +22,7 @@ enum DiscountType {
 }
 
 #[derive(serde::Serialize, Clone)]
+#[swift_bridge(swift_repr = "struct")]
 struct Discount {
     id: String,
     r#type: DiscountType,
@@ -33,6 +34,7 @@ struct Discount {
 }
 
 #[derive(serde::Serialize, Clone)]
+#[swift_bridge(swift_repr = "struct")]
 pub struct Product {
     id: String,
     title: String,

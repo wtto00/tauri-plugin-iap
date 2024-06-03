@@ -11,3 +11,7 @@ yarn.lock
 /target
 Cargo.lock
 node_modules/
+
+.build/
+.swiftpm/
+generated/

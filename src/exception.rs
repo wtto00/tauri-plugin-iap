@@ -5,12 +5,7 @@ pub struct ExceptionError {
 }
 
 #[derive(serde::Serialize, Clone)]
-enum ExceptionType {
-    QueryProducts,
-}
-
-#[derive(serde::Serialize, Clone)]
 pub struct ExceptionPayload {
-    pub r#type: ExceptionType,
+    pub exception_type: String,
     pub payload: ExceptionError,
 }

@@ -5,7 +5,7 @@ fn main() {
     //    You can also use the `swift-bridge` CLI.
     let bridge_files = vec!["src/bridge.rs"];
     swift_bridge_build::parse_bridges(bridge_files)
-        .write_all_concatenated(swift_bridge_out_dir(), "rust-and-swift");
+        .write_all_concatenated(swift_bridge_out_dir(), "tauri-plugin-iap");
 
     // 2. Compile Swift library
     compile_swift();
@@ -92,7 +92,7 @@ fn is_release_build() -> bool {
 }
 
 fn swift_source_dir() -> PathBuf {
-    manifest_dir().join("swift-lib/Sources/tauri-iap")
+    manifest_dir().join("swift-lib/tauri-iap")
 }
 
 fn generated_code_dir() -> PathBuf {

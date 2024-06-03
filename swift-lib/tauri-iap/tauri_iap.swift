@@ -31,7 +31,7 @@ class ProductRequest: NSObject, SKProductsRequestDelegate {
 
     // Handle valid products
       // let validProducts: RustVec<Rust> = []
-    rustProductCallback()
+    rustUpdateProducts()
 
     clearRequestAndHandler()
   }
