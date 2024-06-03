@@ -1,7 +1,6 @@
 use std::sync::Mutex;
 
 use objc2::rc::Retained;
-use objc2_store_kit::SKProductsRequestDelegate;
 use once_cell::sync::OnceCell;
 use serde_json::Value as JsonValue;
 

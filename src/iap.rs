@@ -32,9 +32,6 @@ impl IAP {
         handler: F,
     ) -> Result<(), &str> {
         if Self::can_make_payments() {
-            // let observer: &ProtocolObject<dyn SKPaymentTransactionObserver> =
-            //     ProtocolObject::from_ref(self);
-            // unsafe { SKPaymentQueue::defaultQueue().addTransactionObserver(observer) }
             self.initialized = true;
             set_emit_handler(handler).map_err(|_e| "Failed to initialize listen callback.")
         } else {
