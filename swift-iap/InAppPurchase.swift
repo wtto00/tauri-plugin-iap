@@ -28,9 +28,13 @@ func canMakePayments() -> Bool {
 }
 
 @_cdecl("swift_country_code")
-func country_code() -> SRString {
+func country_code() -> SRString? {
   print(Tag, "country_code")
-  return SRString(SKPaymentQueue.default().storefront?.countryCode ?? "")
+  let country = SKPaymentQueue.default().storefront?.countryCode
+  if country == nil {
+    return nil
+  }
+  return SRString(SKPaymentQueue.default().storefront!.countryCode)
 }
 
 @_cdecl("swift_query_products")

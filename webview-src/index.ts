@@ -15,7 +15,7 @@ export async function canMakePayments() {
  * @see https://developer.apple.com/documentation/storekit/skstorefront
  */
 export async function countryCode() {
-  return await invoke<string>('plugin:iap|country_code')
+  return await invoke<string | null>('plugin:iap|country_code')
 }
 
 /** 

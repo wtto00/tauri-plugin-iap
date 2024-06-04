@@ -55,14 +55,17 @@ fn can_make_payments<R: Runtime>(_app: AppHandle<R>, _window: Window<R>) -> IAPR
     Ok(JsonValue::Bool(available))
 }
 
-swift!(fn swift_country_code() -> SRString);
+swift!(fn swift_country_code() -> Option<SRString>);
 #[command]
 fn country_code() -> IAPResult {
-    let country = unsafe { swift_country_code() };
-    Ok(JsonValue::String(country.to_owned()))
+    if let Some(country) = unsafe { swift_country_code() } {
+        Ok(JsonValue::String(country.to_owned()))
+    } else {
+        Ok(JsonValue::Null)
+    }
 }
 
-swift!(fn swift_query_products(product_id: SRString));
+swift!(fn swift_query_products(product_id: &SRString));
 #[command]
 fn query_products<R: Runtime>(
     _app: AppHandle<R>,
@@ -74,7 +77,7 @@ fn query_products<R: Runtime>(
         return Err("Not initialized.".to_owned());
     }
     unsafe {
-        swift_query_products(identifiers.join(",").as_str().into());
+        swift_query_products(&identifiers.join(",").as_str().into());
     }
     Ok(JsonValue::Null)
 }
