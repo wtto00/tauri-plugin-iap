@@ -1,4 +1,4 @@
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 enum IPeriodUnit {
     Minute,
     Hour,
@@ -8,20 +8,21 @@ enum IPeriodUnit {
     Year,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 enum PaymentMode {
     PayAsYouGo,
     UpFront,
     FreeTrial,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 enum DiscountType {
     Introductory,
     Subscription,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct Discount {
     id: String,
     r#type: DiscountType,
@@ -32,15 +33,17 @@ struct Discount {
     payment_mode: PaymentMode,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Product {
     id: String,
     title: String,
     description: String,
-    price: String,
+    price: f32,
     price_micros: f32,
     currency: String,
-    country_code: String,
+    country_code: Option<String>,
+    currency_symbol: Option<String>,
     intro_price: Option<String>,
     intro_price_micros: Option<f32>,
     intro_price_period: Option<i32>,

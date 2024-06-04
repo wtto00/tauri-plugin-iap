@@ -1,6 +1,5 @@
 // The Swift Programming Language
 // https://docs.swift.org/swift-book
-
 import StoreKit
 import SwiftRs
 
@@ -8,81 +7,62 @@ typealias SwiftCallback = @convention(c) (UnsafeRawPointer?, Int32) -> Void
 
 let Tag = "TauriIAP:"
 
+@_cdecl("swift_initialize")
+func initialize(
+  onProductUpdated: SwiftCallback, onTransactionUpdated: SwiftCallback, onException: SwiftCallback
+) -> Bool {
+  if SKPaymentQueue.canMakePayments() {
+    ProductRequest.shared = ProductRequest(
+      onProductUpdated: onProductUpdated, onException: onException)
+    PaymentTransactionObserver.shared = PaymentTransactionObserver(
+      onTransactionUpdated: onTransactionUpdated, onException: onException)
+    return true
+  }
+  return false
+}
+
 @_cdecl("swift_can_make_payments")
 func canMakePayments() -> Bool {
   print(Tag, "canMakePayments")
   return SKPaymentQueue.canMakePayments()
 }
 
-@_cdecl("purchase_subscription")
-func purchaseSubscription(
-  productId: SRString, callback_complete: SwiftCallback, callback_error: SwiftCallback
-) {
-  print(Tag, "Apple in-app purchase")
-  ProductRequest.shared.requestProducts(
-    for: [productId.toString()],
-    completionHandler: { products, error in
-      print(Tag, "Apple in-app products - callback")
-      if let error = error {
-        print(Tag, "Apple in-app products - got an error")
-        let errorDict = ["error": "\(error)"]
-        let serializedData = try! JSONSerialization.data(withJSONObject: errorDict)
-        let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-        let dataSize = serializedData.count
-        callback_error(dataPointer, Int32(dataSize))
-        return
-      }
-      if let products = products {
-        let subscriptionData: [String: String] = [:]
-        guard let product = products.first else {
-          let serializedData = try! JSONSerialization.data(withJSONObject: subscriptionData)
-          let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-          let dataSize = serializedData.count
-          callback_complete(dataPointer, Int32(dataSize))
-          return
-        }
-        SubscriptionManager.shared.purchaseSubscription(
-          product: product, callback_complete: callback_complete, callback_error: callback_error)
-      }
-    })
+@_cdecl("swift_country_code")
+func country_code() -> SRString {
+  print(Tag, "country_code")
+  return SRString(SKPaymentQueue.default().storefront?.countryCode ?? "")
 }
 
 @_cdecl("swift_query_products")
-func queryProducts(
-  productId: SRString, callback_complete: SwiftCallback, callback_error: SwiftCallback
+func queryProducts(productId: SRString) {
+  print(Tag, "query products")
+  ProductRequest.shared!.requestProducts(Set(productId.toString().components(separatedBy: ",")))
+}
+
+@_cdecl("swift_restore_purchases")
+func restorePurchases(applicationUserName: SRString) {
+  print(Tag, "restore purchases")
+  let username = applicationUserName.toString()
+  if username.isEmpty {
+    PaymentTransactionObserver.shared!.restorePurchases(applicationUserName: nil)
+  } else {
+    PaymentTransactionObserver.shared!.restorePurchases(applicationUserName: username)
+  }
+}
+
+@_cdecl("swift_request_pruchase")
+func requestPruchase(
+  productId: SRString, quantity: Int, applicationUserName: SRString
 ) {
-  print(Tag, "Apple in-app purchase - query products")
-  ProductRequest.shared.requestProducts(
-    for: Set(productId.toString().components(separatedBy: ",")),
-    completionHandler: { products, error in
-      if let error = error {
-        print(Tag, "Apple in-app products - got an error")
-        let errorDict = ["error": "\(error)"]
-        emitCallback(data: errorDict, callback: callback_error)
-        return
-      }
-      if let products = products {
-        print(Tag, "Apple in-app products - found a product")
-        var skProducts = []
-        for product in products {
-          let skProduct: [String: Any] = [
-            "productIdentifier": product.productIdentifier,
-            "price": product.price.stringValue,
-            "priceLocale": product.priceLocale.identifier,
-            "priceCurrencyCode": product.priceLocale.currencyCode ?? "",
-            "priceCurrency": product.priceLocale.currencySymbol ?? "",
-            "subscriptionPeriod": getSubscriptionPeriod(
-              subscriptionPeriod: product.subscriptionPeriod),
-            "introductoryPrice": discountToString(discount: product.introductoryPrice),
-            "discounts": discountsToString(discounts: product.discounts),
-          ]
-          skProducts.append(skProduct)
-        }
-        emitCallback(data: skProducts, callback: callback_complete)
-        return
-      }
-      print(Tag, "No products and no error?")
-    })
+  print(Tag, "request pruchase")
+  PaymentTransactionObserver.shared!.purchase(
+    productId: productId.toString(), quantity: quantity,
+    applicationUserName: applicationUserName.toString())
+}
+
+@_cdecl("swift_complete_pruchase")
+func completePruchase(transactionId: SRString) {
+  print(Tag, "complete pruchase")
 }
 
 func emitCallback(data: Any, callback: SwiftCallback?) {
@@ -91,115 +71,78 @@ func emitCallback(data: Any, callback: SwiftCallback?) {
   let dataSize = serializedData.count
   callback?(dataPointer, Int32(dataSize))
 }
-
-func discountsToString(discounts: [SKProductDiscount]) -> [[String: String]] {
-  var skDiscounts: [[String: String]] = []
-  for discount in discounts {
-    let data = discountToString(discount: discount)
-    skDiscounts.append(data)
-  }
-  return skDiscounts
+func emitException(type: String, code: any Numeric, message: String, callback: SwiftCallback?) {
+  let serializedData = try! JSONSerialization.data(withJSONObject: [
+    "type": type,
+    "payload": [
+      "code": code,
+      "message": message,
+    ],
+  ])
+  let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
+  let dataSize = serializedData.count
+  callback?(dataPointer, Int32(dataSize))
 }
 
-func discountToString(discount: SKProductDiscount?) -> [String: String] {
-  guard let discount = discount else {
-    return [:]
-  }
-  let priceFormatter = NumberFormatter()
-  priceFormatter.numberStyle = .currency
-  let formattedPrice = priceFormatter.string(from: discount.price)
-  let skDiscount: [String: String] = [
-    "discountPrice": formattedPrice ?? "",
-    "discountPeriod": periodUnitToString(
-      unit: discount.subscriptionPeriod.unit,
-      numberOfUnits: discount.subscriptionPeriod.numberOfUnits),
-    "discount": paymentModeToString(mode: discount.paymentMode),
-  ]
-  return skDiscount
+func priceLocaleCurrencyCode(_ priceLocale: Locale) -> String {
+  let numberFormatter = NumberFormatter()
+  numberFormatter.locale = priceLocale
+  return numberFormatter.currencyCode
 }
-
-func periodUnitToString(unit: SKProduct.PeriodUnit, numberOfUnits: Int) -> String {
-  var periodString = "\(numberOfUnits)"
+func productUnitToString(_ unit: SKProduct.PeriodUnit?) -> String? {
   switch unit {
   case .day:
-    periodString += " day"
+    return "Day"
   case .week:
-    periodString += " week"
+    return "Week"
   case .month:
-    periodString += " month"
+    return "Month"
   case .year:
-    periodString += " year"
-  @unknown default:
-    periodString += " unit"
+    return "Year"
+  default:
+    return nil
   }
-  if numberOfUnits > 1 {
-    periodString += "s"
-  }
-  return periodString
 }
-
-func paymentModeToString(mode: SKProductDiscount.PaymentMode) -> String {
+func productPaymentModeToString(_ mode: SKProductDiscount.PaymentMode?) -> String? {
   switch mode {
   case .payAsYouGo:
-    return "Pay as you go"
+    return "PayAsYouGo"
   case .payUpFront:
-    return "Pay up front"
+    return "UpFront"
   case .freeTrial:
-    return "Free trial"
-  @unknown default:
-    return "unknown"
+    return "FreeTrial"
+  default:
+    return nil
   }
 }
-
-func getSubscriptionPeriod(subscriptionPeriod: SKProductSubscriptionPeriod?) -> String {
-  if let subscriptionPeriod = subscriptionPeriod {
-    let numberOfUnits = subscriptionPeriod.numberOfUnits
-    let unit = subscriptionPeriod.unit
-
-    // Format the subscription period as a string
-    var periodString = "\(numberOfUnits)"
-    switch unit {
-    case .day:
-      periodString += " day"
-    case .week:
-      periodString += " week"
-    case .month:
-      periodString += " month"
-    case .year:
-      periodString += " year"
-    @unknown default:
-      periodString += " unit"
-    }
-
-    // Add plural "s" if numberOfUnits > 1
-    if numberOfUnits > 1 {
-      periodString += "s"
-    }
-
-    if periodString == "1 month" {
-      periodString = "Per month"
-    }
-
-    if periodString == "1 year" {
-      periodString = "Yearly"
-    }
-
-    return periodString
+func productDiscountTypeToString(_ type: SKProductDiscount.`Type`) -> String? {
+  switch type {
+  case .introductory:
+    return "Introductory"
+  case .subscription:
+    return "Subscription"
+  default:
+    return nil
   }
-  return ""
 }
 
 class ProductRequest: NSObject, SKProductsRequestDelegate {
-  static let shared = ProductRequest()
+  static var shared: ProductRequest?
+  private var onProductUpdated: SwiftCallback?
+  private var onException: SwiftCallback?
+  var products: [String: SKProduct] = [:]
+
+  init(onProductUpdated: SwiftCallback, onException: SwiftCallback) {
+    self.onProductUpdated = onProductUpdated
+    self.onException = onException
+  }
+
   private var productsRequest: SKProductsRequest?
-  private var productsCompletionHandler: (([SKProduct]?, Error?) -> Void)?
 
   func requestProducts(
-    for productIDs: Set<String>, completionHandler: @escaping ([SKProduct]?, Error?) -> Void
+    _ productIDs: Set<String>
   ) {
     print(Tag, "requestProducts: ", productIDs)
-    productsRequest?.cancel()
-    productsCompletionHandler = completionHandler
 
     productsRequest = SKProductsRequest(productIdentifiers: productIDs)
     productsRequest!.delegate = self
@@ -207,133 +150,147 @@ class ProductRequest: NSObject, SKProductsRequestDelegate {
   }
 
   func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
-    let products = response.products
-    print(Tag, "productsRequest response: ", products.count)
-    let invalidProductIdentifiers = response.invalidProductIdentifiers
-
     // Handle valid products
-    productsCompletionHandler?(products, nil)
+    var skProducts: [[String: Any?]] = []
+    for product in response.products {
+      products.updateValue(product, forKey: product.productIdentifier)
 
-    // Handle invalid product identifiers if needed
-    for invalidProductIdentifier in invalidProductIdentifiers {
-      print("Invalid product identifier: \(invalidProductIdentifier)")
+      let discounts: [[String: Any?]] = product.discounts.map { discount in
+        return [
+          "id": discount.identifier,
+          "type": productDiscountTypeToString(discount.type),
+          "price": discount.price,
+          "priceMicros": discount.price.multiplying(byPowerOf10: 6),
+          "period": discount.numberOfPeriods * discount.subscriptionPeriod.numberOfUnits,
+          "periodUnit": productUnitToString(discount.subscriptionPeriod.unit),
+          "paymentMode": productPaymentModeToString(discount.paymentMode),
+        ]
+      }
+      var countryCode = product.priceLocale.regionCode
+      if #available(macOS 13, *) {
+        countryCode = product.priceLocale.region?.identifier
+      }
+      skProducts.append([
+        "id": product.productIdentifier,
+        "title": product.localizedTitle,
+        "description": product.localizedDescription,
+        "price": product.price,
+        "priceMicros": product.price.multiplying(byPowerOf10: 6),
+        "currency": priceLocaleCurrencyCode(product.priceLocale),
+        "countryCode": countryCode,
+        "currencySymbol": product.priceLocale.currencySymbol,
+        "introPrice": product.introductoryPrice?.price,
+        "introPriceMicros": product.introductoryPrice?.price.multiplying(byPowerOf10: 6),
+        "introPricePeriod": product.introductoryPrice != nil
+          ? product.introductoryPrice!.numberOfPeriods
+            * product.introductoryPrice!.subscriptionPeriod.numberOfUnits : nil,
+        "introPricePeriodUnit": productUnitToString(
+          product.introductoryPrice?.subscriptionPeriod.unit),
+        "introPricePaymentMode": productPaymentModeToString(
+          product.introductoryPrice?.paymentMode),
+        "discounts": discounts,
+        "group": product.subscriptionGroupIdentifier,
+        "billingPeriod": product.subscriptionPeriod?.numberOfUnits,
+        "billingPeriodUnit": productUnitToString(product.subscriptionPeriod?.unit),
+      ])
     }
-
-    clearRequestAndHandler()
+    emitCallback(data: skProducts, callback: onProductUpdated)
   }
 
   func productsRequest(_ request: SKProductsRequest, didFailWithError error: Error) {
     // Handle request failure
-    print(Tag, "productsRequest error: ",error.localizedDescription)
-    productsCompletionHandler?(nil, error)
-    clearRequestAndHandler()
-  }
-    
-  func requestDidFinish(_ request: SKRequest) {
-    print(Tag, "productsRequest - requestDidFinish")
-  }
-  func request(_ request: SKRequest, didFailWithError error: any Error) {
-    print(Tag, "productsRequest - didFailWithError: ",error.localizedDescription)
-    productsCompletionHandler?(nil, error)
-    clearRequestAndHandler()
+    print(Tag, "products request error: ", error.localizedDescription)
+    emitException(
+      type: "QueryProducts", code: 1, message: error.localizedDescription, callback: onException)
   }
 
-  private func clearRequestAndHandler() {
-    productsRequest = nil
-    productsCompletionHandler = nil
+  func request(_ request: SKRequest, didFailWithError error: any Error) {
+    print(Tag, "products request - didFailWithError: ", error.localizedDescription)
+    emitException(
+      type: "QueryProducts", code: 2, message: error.localizedDescription, callback: onException)
   }
 }
 
-class SubscriptionManager: NSObject, SKPaymentTransactionObserver {
-  static let shared = SubscriptionManager()
-  var successBlock: SwiftCallback?
-  var errorBlock: SwiftCallback?
+class PaymentTransactionObserver: NSObject, SKPaymentTransactionObserver {
+  static var shared: PaymentTransactionObserver?
+  private var onTransactionUpdated: SwiftCallback?
+  private var onException: SwiftCallback?
+  var cachedTransactions: [String: SKPaymentTransaction] = [:]
 
-  override init() {
+  init(onTransactionUpdated: SwiftCallback, onException: SwiftCallback) {
     super.init()
+    self.onTransactionUpdated = onTransactionUpdated
+    self.onException = onException
     SKPaymentQueue.default().add(self)
   }
 
-  func purchaseSubscription(
-    product: SKProduct, callback_complete: SwiftCallback, callback_error: SwiftCallback
-  ) {
-    self.successBlock = callback_complete
-    self.errorBlock = callback_error
-    print(Tag, "Can make payments")
-    if SKPaymentQueue.canMakePayments() {
-      print(Tag, "Product \(product.productIdentifier)")
-      let payment = SKMutablePayment(product: product)
-      payment.applicationUsername = "Testing"
-      SKPaymentQueue.default().add(payment)
+  func purchase(productId: String, quantity: Int, applicationUserName: String) {
+    let product = ProductRequest.shared?.products[productId]
+    if product == nil {
+      emitException(
+        type: "Purchase", code: 4, message: "Product does not exist.", callback: onException)
     } else {
-      print(Tag, "User can't make payments")
-      print("User can't make payments.")
+      let payment = SKMutablePayment(product: product!)
+      if !applicationUserName.isEmpty {
+        payment.applicationUsername = applicationUserName
+      }
+      payment.quantity = quantity
+      SKPaymentQueue.default().add(payment)
     }
   }
 
-  func restorePurchases() {
-    SKPaymentQueue.default().restoreCompletedTransactions()
+  func restorePurchases(applicationUserName: String?) {
+    SKPaymentQueue.default().restoreCompletedTransactions(
+      withApplicationUsername: applicationUserName)
+  }
+
+  func completePruchase(transactionId: String) {
+    let transaction = cachedTransactions[transactionId]
+    if transaction != nil {
+      SKPaymentQueue.default().finishTransaction(transaction!)
+    }
   }
 
   func paymentQueue(
     _ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]
   ) {
+    var skTransactions: [[String: Any?]] = []
     for transaction in transactions {
-      switch transaction.transactionState {
-      case .purchased:
-        print(Tag, "Subscription purchased \(transaction)")
-        // Handle successful purchase
-        complete(transaction: transaction)
-        SKPaymentQueue.default().finishTransaction(transaction)
-      case .failed:
-        print(Tag, "Subscription failed \(String(describing: transaction.error))")
-        // Handle failed transaction
-        fail(transaction: transaction)
-        SKPaymentQueue.default().finishTransaction(transaction)
-      case .restored:
-        print(Tag, "Subscription restored \(transaction)")
-        // Handle restored transaction
-        complete(transaction: transaction)
-        SKPaymentQueue.default().finishTransaction(transaction)
-      case .deferred:
-        print(Tag, "Subscription in progress/deferred \(transaction)")
-        // Transaction is in progress or deferred, no action needed
-        complete(transaction: transaction)
-      case .purchasing:
-        print(Tag, "Subscription in progress/deferred \(transaction)")
-        // Transaction is in progress or deferred, no action needed
-        complete(transaction: transaction)
-      @unknown default:
-        break
+      if transaction.transactionIdentifier != nil {
+        // purchased or restored
+        cachedTransactions.updateValue(transaction, forKey: transaction.transactionIdentifier!)
       }
+      var receiptString: String? = nil
+      if let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
+        FileManager.default.fileExists(atPath: appStoreReceiptURL.path)
+      {
+        do {
+          let receiptData = try Data(contentsOf: appStoreReceiptURL, options: .alwaysMapped)
+          receiptString = receiptData.base64EncodedString(options: [])
+        } catch {
+          print(Tag, "Couldn't read receipt data with error: " + error.localizedDescription)
+        }
+      }
+      skTransactions.append([
+        "productId": transaction.payment.productIdentifier,
+        "transactionId": transaction.transactionIdentifier,
+        "transactionDate": transaction.transactionDate,
+        "status": transaction.transactionState,
+        "error": transaction.error?.localizedDescription,
+        "applicationUserName": transaction.payment.applicationUsername,
+        "originalIdentifier": transaction.original?.transactionIdentifier,
+        "receiptData": receiptString,
+      ])
+      emitCallback(data: skTransactions, callback: onTransactionUpdated)
     }
   }
 
-  func complete(transaction: SKPaymentTransaction) {
-    print(Tag, "Transaction completed successfully.")
-    let transactionData: [String: String] = [
-      "productIdentifier": transaction.payment.productIdentifier,
-      "transactionIdentifier": transaction.transactionIdentifier ?? "",
-      "originalIdentifier": transaction.original?.transactionIdentifier ?? "",
-      "applicationUsername": transaction.payment.applicationUsername ?? "",
-      "transactionState": String(transaction.transactionState.rawValue),
-      "transactionDate": transaction.transactionDate?.description ?? "",
-    ]
-    let serializedData = try! JSONSerialization.data(withJSONObject: transactionData)
-    let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-    let dataSize = serializedData.count
-    self.successBlock?(dataPointer, Int32(dataSize))
-  }
-
-  func fail(transaction: SKPaymentTransaction) {
-    print(Tag, "Transaction failed.")
-    let transactionData: [String: String] = [
-      "transactionState": String(transaction.transactionState.rawValue),
-      "error": transaction.error?.localizedDescription ?? "",
-    ]
-    let serializedData = try! JSONSerialization.data(withJSONObject: transactionData)
-    let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-    let dataSize = serializedData.count
-    self.errorBlock?(dataPointer, Int32(dataSize))
+  // Failed to restore purchase
+  func paymentQueue(
+    _ queue: SKPaymentQueue, restoreCompletedTransactionsFailedWithError error: any Error
+  ) {
+    emitException(
+      type: "RestorePurchases", code: 3, message: error.localizedDescription,
+      callback: onException)
   }
 }

@@ -1,11 +1,21 @@
 import { invoke } from '@tauri-apps/api/tauri'
-import { type EventCallback, listen } from '@tauri-apps/api/event'
+import { listen } from '@tauri-apps/api/event'
 
 /**
  * Returns `true` if the payment platform is ready and available.
  */
 export async function canMakePayments() {
   return await invoke<boolean>('plugin:iap|can_make_payments')
+}
+
+/**
+ * Returns the user's country.
+ * 
+ * Returns the country code from SKStoreFrontWrapper.
+ * @see https://developer.apple.com/documentation/storekit/skstorefront
+ */
+export async function countryCode() {
+  return await invoke<string>('plugin:iap|country_code')
 }
 
 /** 
@@ -15,24 +25,104 @@ export async function canMakePayments() {
  * for example, [App Store Connect](https://appstoreconnect.apple.com/) for MacOS.
  */
 export async function startQueryProducts(identifiers: string[]) {
-  return await invoke('plugin:iap|query_products', { identifiers })
+  return await invoke<null>('plugin:iap|query_products', { identifiers })
 }
 
 /**
  * Restore all previous purchases.
  * 
- * @param applicationUserName The `applicationUserName` should match whatever was sent in the initial `PurchaseParam`, 
- * if anything. If no `applicationUserName` was specified in the initial `PurchaseParam`, use null.
- * 
- * Restored purchases are delivered through the `purchaseStream` with a status of `PurchaseStatus.restored`. 
- * You should listen for these purchases, validate their receipts, 
- * deliver the content and mark the purchase complete by calling the `completePurchase` method for each purchase.
- * 
- * This does not return consumed products. If you want to restore unused consumable products, 
- * you need to persist consumable product information for your user on your own server.
+ * @param applicationUserName The `applicationUserName` should match whatever was sent in the initial `requestPruchase`, 
+ * if anything. If no `applicationUserName` was specified in the initial `requestPruchase`, use null.
  */
 export async function restorePurchases(applicationUserName?: string) {
-  await invoke('plugin:iap|restore_purchases')
+  await invoke<null>('plugin:iap|restore_purchases', { applicationUserName })
+}
+
+/**
+ * Request a purchase.
+ *
+ * @param productIdentifier Identifier of the product of you want to purchase.
+ * @param [quantity=1] The quantity of goods purchased
+ * @param applicationUserName Used to mark `restorePurchases`.
+ */
+export async function requestPruchase(productIdentifier: string, quantity: number = 1, applicationUserName?: string) {
+  await invoke<null>('plugin:iap|request_pruchase', { productIdentifier, quantity, applicationUserName })
+}
+
+/**
+ * Must to call this method when a transaction's status is `TransactionStatus.purchased` or `TransactionStatus.restored`
+ * @param transaction Transaction of purchased.
+ */
+export async function completePurchase(transaction: Transaction) {
+  if (!transaction.transactionId) throw Error("Unknown transactionId.")
+  await invoke<null>('plugin:iap|complete_pruchase', { transactionId: transaction.transactionId })
+}
+
+export enum TransactionStatus {
+  /**
+   * The purchase process is pending.
+   * 
+   * You can update UI to let your users know the purchase is pending.
+   */
+  pending = 0,
+  /** 
+   * The purchase is finished and successful.
+   * 
+   * Update your UI to indicate the purchase is finished and deliver the product.
+   */
+  purchased = 1,
+  /** Some error occurred in the purchase. The purchasing process if aborted. */
+  failed = 2,
+  /** 
+   * The purchase has been restored to the device.
+   * 
+   * You should validate the purchase and if valid deliver the content. Once the
+   * content has been delivered or if the receipt is invalid you should finish
+   * the purchase by calling the `completePurchase` method.
+   */
+  restored = 3,
+  /** The transaction is in the queue, but its final status is pending external action. */
+  deferred = 4,
+}
+/**
+ * Transaction as reported by the device
+ *
+ * @see {@link Receipt}
+ * @see {@link store.localTransactions}
+ */
+export interface Transaction {
+  /** 
+   * Transaction identifier.
+   * Only valid if state is SKPaymentTransactionStatePurchased or SKPaymentTransactionStateRestored.
+   */
+  transactionId?: String
+  /** The product identifier of the purchase. */
+  productId: string
+  /**
+   * The date when the transaction was added to the server queue.
+   * 
+   * The value is `null` if `status` is not `TransactionStatus.purchased` or `TransactionStatus.restored`.
+   */
+  transactionDate?: String
+  /** The status that this transaction is currently on. */
+  status: TransactionStatus
+  /** The error details when the [status] is [TransactionStatus.failed]. */
+  error?: string
+  /** Application-specific user identifier. */
+  applicationUserName?: string
+  /** The unique server-provided identifier of original transaction. */
+  originalIdentifier?: string
+  /** The receipt for sending to the App Store for verification. */
+  receiptData?: string
+}
+
+/**
+ * Listen to the callback result of the startQueryProducts method.
+ */
+export async function listenTransactionUpdated(callback: (transactions: Transaction[]) => void) {
+  return await listen<Transaction[]>('plugin_iap:transaction-updated', (e) => {
+    callback(e.payload)
+  })
 }
 
 /** Unit for measuring durations */
@@ -73,13 +163,15 @@ export interface Product {
   /** localized description */
   description: string;
   /** localized price */
-  price: string;
+  price: number;
   /** Price in micro units */
   priceMicros: number;
   /** Currency used by this product */
   currency: string;
   /** AppStore country this product has been fetched for */
-  countryCode: string;
+  countryCode?: string;
+  /** The currency symbol for the locale, e.g. $ for US locale. */
+  currencySymbol?: string;
   /** Number of period units in each billing cycle */
   billingPeriod?: number;
   /** Unit for the billing cycle */
@@ -103,8 +195,10 @@ export interface Product {
 /**
  * Listen to the callback result of the startQueryProducts method.
  */
-export async function listenProductsUpdated(callback: EventCallback<Product[]>) {
-  return await listen('plugin:iap_products-updated', callback)
+export async function listenProductsUpdated(callback: (products: Product[]) => void) {
+  return await listen<Product[]>('plugin_iap:products-updated', (e) => {
+    callback(e.payload)
+  })
 }
 
 /**
@@ -112,10 +206,20 @@ export async function listenProductsUpdated(callback: EventCallback<Product[]>) 
  */
 export enum ExceptionType {
   QueryProducts = "QueryProducts",
+  RestorePurchases = "RestorePurchases",
+  Purchase = "Purchase",
+  TransactionUpdated = "TransactionUpdated",
+  Unknown = "Unknown"
+}
+export interface Exception {
+  type: ExceptionType,
+  payload: { code: number, message: string }
 }
 /**
  * Listening for callback of exceptional events
  */
-export async function listenException(callback: EventCallback<{ type: ExceptionType, payload: { code: number, message: string } }>) {
-  return await listen('plugin:iap_exception', callback)
+export async function listenException(callback: (err: Exception) => void) {
+  return await listen<Exception>('plugin_iap:exception', (e) => {
+    callback(e.payload)
+  })
 }

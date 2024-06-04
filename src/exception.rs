@@ -1,15 +1,17 @@
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct ExceptionError {
-    pub code: u32,
+    pub code: i32,
     pub message: String,
 }
 
-#[derive(serde::Serialize, Clone)]
-enum ExceptionType {
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub enum ExceptionType {
     QueryProducts,
+    RestorePurchases,
+    JsonParse,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct ExceptionPayload {
     pub r#type: ExceptionType,
     pub payload: ExceptionError,
