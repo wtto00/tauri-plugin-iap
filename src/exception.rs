@@ -8,6 +8,8 @@ pub struct ExceptionError {
 pub enum ExceptionType {
     QueryProducts,
     RestorePurchases,
+    Purchase,
+    TransactionUpdated,
     JsonParse,
 }
 

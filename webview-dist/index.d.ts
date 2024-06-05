@@ -10,6 +10,19 @@ export declare function canMakePayments(): Promise<boolean>;
  */
 export declare function countryCode(): Promise<string | null>;
 /**
+ * Initialize the plugin.
+ *
+ * If the initialization is not successful,
+ * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase` interfaces.
+ * @param listenCallback Listen to the callback result of native event
+ * @returns Has the initialization been successful
+ */
+export declare function initialize(listenCallback: {
+    onProductsUpdated: (products: Product[]) => void;
+    onTransactionsUpdated: (transactions: Transaction[]) => void;
+    onException: (err: Exception) => void;
+}): Promise<boolean>;
+/**
  * Query product details for the given set of IDs.
  *
  * Identifiers in the underlying payment platform,
@@ -31,11 +44,6 @@ export declare function restorePurchases(applicationUserName?: string): Promise<
  * @param applicationUserName Used to mark `restorePurchases`.
  */
 export declare function requestPruchase(productIdentifier: string, quantity?: number, applicationUserName?: string): Promise<void>;
-/**
- * Must to call this method when a transaction's status is `TransactionStatus.purchased` or `TransactionStatus.restored`
- * @param transaction Transaction of purchased.
- */
-export declare function completePurchase(transaction: Transaction): Promise<void>;
 export declare enum TransactionStatus {
     /**
      * The purchase process is pending.
@@ -93,10 +101,6 @@ export interface Transaction {
     /** The receipt for sending to the App Store for verification. */
     receiptData?: string;
 }
-/**
- * Listen to the callback result of the startQueryProducts method.
- */
-export declare function listenTransactionUpdated(callback: (transactions: Transaction[]) => void): Promise<import("@tauri-apps/api/event").UnlistenFn>;
 /** Unit for measuring durations */
 export declare type IPeriodUnit = "Minute" | "Hour" | "Day" | "Week" | "Month" | "Year";
 /** Mode of payment */
@@ -164,10 +168,6 @@ export interface Product {
     group?: string;
 }
 /**
- * Listen to the callback result of the startQueryProducts method.
- */
-export declare function listenProductsUpdated(callback: (products: Product[]) => void): Promise<import("@tauri-apps/api/event").UnlistenFn>;
-/**
  * Types of exceptional events.
  */
 export declare enum ExceptionType {
@@ -184,7 +184,3 @@ export interface Exception {
         message: string;
     };
 }
-/**
- * Listening for callback of exceptional events
- */
-export declare function listenException(callback: (err: Exception) => void): Promise<import("@tauri-apps/api/event").UnlistenFn>;

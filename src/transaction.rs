@@ -13,7 +13,7 @@ enum TransactionStatus {
 pub struct Transaction {
     product_id: String,
     transaction_id: Option<String>,
-    transaction_date: Option<String>,
+    transaction_date: Option<i32>,
     status: TransactionStatus,
     error: Option<String>,
     application_user_name: Option<String>,

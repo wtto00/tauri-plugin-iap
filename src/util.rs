@@ -30,7 +30,13 @@ impl EmitEvents {
     fn get_name(&self) -> &'static str {
         match self {
             EmitEvents::ProductsUpdated => "plugin_iap:products-updated",
-            EmitEvents::TransactionUpdated => "plugin_iap:transaction-updated",
+            EmitEvents::TransactionUpdated => "plugin_iap:transactions-updated",
+        }
+    }
+    fn get_exception_type(&self) -> ExceptionType {
+        match self {
+            EmitEvents::ProductsUpdated => ExceptionType::QueryProducts,
+            EmitEvents::TransactionUpdated => ExceptionType::TransactionUpdated,
         }
     }
 }
@@ -52,10 +58,10 @@ where
                     .emit_all(
                         "plugin_iap:exception",
                         ExceptionPayload {
-                            r#type: ExceptionType::JsonParse,
+                            r#type: event.get_exception_type(),
                             payload: ExceptionError {
                                 code: -1,
-                                message: format!("Failed to json parse: {}.", e),
+                                message: format!("Failed to parse json: {}.", e),
                             },
                         },
                     )
@@ -82,7 +88,7 @@ pub fn emit_exception(arg1: *const c_void, size: i32) {
                             r#type: ExceptionType::JsonParse,
                             payload: ExceptionError {
                                 code: -1,
-                                message: format!("Failed to json parse: {}.", e),
+                                message: format!("Failed to parse json: {}.", e),
                             },
                         },
                     )

@@ -18,6 +18,32 @@ export async function countryCode() {
   return await invoke<string | null>('plugin:iap|country_code')
 }
 
+/**
+ * Initialize the plugin. 
+ * 
+ * If the initialization is not successful, 
+ * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase` interfaces.
+ * @param listenCallback Listen to the callback result of native event
+ * @returns Has the initialization been successful
+ */
+export async function initialize(
+  listenCallback: {
+    onProductsUpdated: (products: Product[]) => void;
+    onTransactionsUpdated: (transactions: Transaction[]) => void
+    onException: (err: Exception) => void
+  }) {
+  await listen<Product[]>('plugin_iap:products-updated', (e) => {
+    listenCallback.onProductsUpdated(e.payload)
+  })
+  await listen<Transaction[]>('plugin_iap:transactions-updated', (e) => {
+    listenCallback.onTransactionsUpdated(e.payload)
+  })
+  await listen<Exception>('plugin_iap:exception', (e) => {
+    listenCallback.onException(e.payload)
+  })
+  return await invoke<boolean>('plugin:iap|initialize')
+}
+
 /** 
  * Query product details for the given set of IDs.
  * 
@@ -47,15 +73,6 @@ export async function restorePurchases(applicationUserName?: string) {
  */
 export async function requestPruchase(productIdentifier: string, quantity: number = 1, applicationUserName?: string) {
   await invoke<null>('plugin:iap|request_pruchase', { productIdentifier, quantity, applicationUserName })
-}
-
-/**
- * Must to call this method when a transaction's status is `TransactionStatus.purchased` or `TransactionStatus.restored`
- * @param transaction Transaction of purchased.
- */
-export async function completePurchase(transaction: Transaction) {
-  if (!transaction.transactionId) throw Error("Unknown transactionId.")
-  await invoke<null>('plugin:iap|complete_pruchase', { transactionId: transaction.transactionId })
 }
 
 export enum TransactionStatus {
@@ -103,7 +120,7 @@ export interface Transaction {
    * 
    * The value is `null` if `status` is not `TransactionStatus.purchased` or `TransactionStatus.restored`.
    */
-  transactionDate?: String
+  transactionDate?: number
   /** The status that this transaction is currently on. */
   status: TransactionStatus
   /** The error details when the [status] is [TransactionStatus.failed]. */
@@ -114,15 +131,6 @@ export interface Transaction {
   originalIdentifier?: string
   /** The receipt for sending to the App Store for verification. */
   receiptData?: string
-}
-
-/**
- * Listen to the callback result of the startQueryProducts method.
- */
-export async function listenTransactionUpdated(callback: (transactions: Transaction[]) => void) {
-  return await listen<Transaction[]>('plugin_iap:transaction-updated', (e) => {
-    callback(e.payload)
-  })
 }
 
 /** Unit for measuring durations */
@@ -192,14 +200,6 @@ export interface Product {
   group?: string;
 
 }
-/**
- * Listen to the callback result of the startQueryProducts method.
- */
-export async function listenProductsUpdated(callback: (products: Product[]) => void) {
-  return await listen<Product[]>('plugin_iap:products-updated', (e) => {
-    callback(e.payload)
-  })
-}
 
 /**
  * Types of exceptional events.
@@ -209,17 +209,9 @@ export enum ExceptionType {
   RestorePurchases = "RestorePurchases",
   Purchase = "Purchase",
   TransactionUpdated = "TransactionUpdated",
-  Unknown = "Unknown"
+  JsonParse = "JsonParse"
 }
 export interface Exception {
   type: ExceptionType,
   payload: { code: number, message: string }
-}
-/**
- * Listening for callback of exceptional events
- */
-export async function listenException(callback: (err: Exception) => void) {
-  return await listen<Exception>('plugin_iap:exception', (e) => {
-    callback(e.payload)
-  })
 }

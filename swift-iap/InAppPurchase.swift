@@ -1,21 +1,29 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
+//
+//  InAppPurchase.swift
+//  TauriIAP
+//
+//  Created by wtto on 2024/6/5.
+//
+
+import OSLog
 import StoreKit
 import SwiftRs
 
 typealias SwiftCallback = @convention(c) (UnsafeRawPointer?, Int32) -> Void
 
-let Tag = "TauriIAP:"
+let log = OSLog(subsystem: "tauri", category: "plugin.apple.iap")
 
 @_cdecl("swift_initialize")
 func initialize(
-  onProductUpdated: SwiftCallback, onTransactionUpdated: SwiftCallback, onException: SwiftCallback
+  onProductsUpdated: SwiftCallback, onTransactionsUpdated: SwiftCallback, onException: SwiftCallback
 ) -> Bool {
+  os_log(.debug, log: log, "initialize")
   if SKPaymentQueue.canMakePayments() {
-    ProductRequest.shared = ProductRequest(
-      onProductUpdated: onProductUpdated, onException: onException)
-    PaymentTransactionObserver.shared = PaymentTransactionObserver(
-      onTransactionUpdated: onTransactionUpdated, onException: onException)
+    InAppPurchaseHandler.shared = InAppPurchaseHandler(
+      onProductsUpdated: onProductsUpdated,
+      onTransactionsUpdated: onTransactionsUpdated,
+      onException: onException
+    )
     return true
   }
   return false
@@ -23,13 +31,13 @@ func initialize(
 
 @_cdecl("swift_can_make_payments")
 func canMakePayments() -> Bool {
-  print(Tag, "canMakePayments")
+  os_log(.debug, log: log, "can make payments")
   return SKPaymentQueue.canMakePayments()
 }
 
 @_cdecl("swift_country_code")
-func country_code() -> SRString? {
-  print(Tag, "country_code")
+func countryCode() -> SRString? {
+  os_log(.debug, log: log, "country code")
   let country = SKPaymentQueue.default().storefront?.countryCode
   if country == nil {
     return nil
@@ -39,122 +47,117 @@ func country_code() -> SRString? {
 
 @_cdecl("swift_query_products")
 func queryProducts(productId: SRString) {
-  print(Tag, "query products")
-  ProductRequest.shared!.requestProducts(Set(productId.toString().components(separatedBy: ",")))
+  os_log(.debug, log: log, "query products")
+  InAppPurchaseHandler.shared!.requestProducts(
+    Set(productId.toString().components(separatedBy: ","))
+  )
 }
 
 @_cdecl("swift_restore_purchases")
 func restorePurchases(applicationUserName: SRString) {
-  print(Tag, "restore purchases")
-  let username = applicationUserName.toString()
-  if username.isEmpty {
-    PaymentTransactionObserver.shared!.restorePurchases(applicationUserName: nil)
-  } else {
-    PaymentTransactionObserver.shared!.restorePurchases(applicationUserName: username)
-  }
+  os_log(.debug, log: log, "restore purchases")
+  InAppPurchaseHandler.shared!.restore(
+    applicationUserName: applicationUserName.toString()
+  )
 }
 
 @_cdecl("swift_request_pruchase")
 func requestPruchase(
-  productId: SRString, quantity: Int, applicationUserName: SRString
+  productId: SRString,
+  quantity: Int,
+  applicationUserName: SRString
 ) {
-  print(Tag, "request pruchase")
-  PaymentTransactionObserver.shared!.purchase(
-    productId: productId.toString(), quantity: quantity,
-    applicationUserName: applicationUserName.toString())
+  os_log(.debug, log: log, "request pruchase")
+  InAppPurchaseHandler.shared!.purchase(
+    productId: productId.toString(),
+    quantity: quantity,
+    applicationUserName: applicationUserName.toString()
+  )
 }
 
-@_cdecl("swift_complete_pruchase")
-func completePruchase(transactionId: SRString) {
-  print(Tag, "complete pruchase")
-}
+class InAppPurchaseHandler: NSObject {
+  static var shared: InAppPurchaseHandler?
 
-func emitCallback(data: Any, callback: SwiftCallback?) {
-  let serializedData = try! JSONSerialization.data(withJSONObject: data)
-  let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-  let dataSize = serializedData.count
-  callback?(dataPointer, Int32(dataSize))
-}
-func emitException(type: String, code: any Numeric, message: String, callback: SwiftCallback?) {
-  let serializedData = try! JSONSerialization.data(withJSONObject: [
-    "type": type,
-    "payload": [
-      "code": code,
-      "message": message,
-    ],
-  ])
-  let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
-  let dataSize = serializedData.count
-  callback?(dataPointer, Int32(dataSize))
-}
-
-func priceLocaleCurrencyCode(_ priceLocale: Locale) -> String {
-  let numberFormatter = NumberFormatter()
-  numberFormatter.locale = priceLocale
-  return numberFormatter.currencyCode
-}
-func productUnitToString(_ unit: SKProduct.PeriodUnit?) -> String? {
-  switch unit {
-  case .day:
-    return "Day"
-  case .week:
-    return "Week"
-  case .month:
-    return "Month"
-  case .year:
-    return "Year"
-  default:
-    return nil
-  }
-}
-func productPaymentModeToString(_ mode: SKProductDiscount.PaymentMode?) -> String? {
-  switch mode {
-  case .payAsYouGo:
-    return "PayAsYouGo"
-  case .payUpFront:
-    return "UpFront"
-  case .freeTrial:
-    return "FreeTrial"
-  default:
-    return nil
-  }
-}
-func productDiscountTypeToString(_ type: SKProductDiscount.`Type`) -> String? {
-  switch type {
-  case .introductory:
-    return "Introductory"
-  case .subscription:
-    return "Subscription"
-  default:
-    return nil
-  }
-}
-
-class ProductRequest: NSObject, SKProductsRequestDelegate {
-  static var shared: ProductRequest?
-  private var onProductUpdated: SwiftCallback?
-  private var onException: SwiftCallback?
-  var products: [String: SKProduct] = [:]
-
-  init(onProductUpdated: SwiftCallback, onException: SwiftCallback) {
-    self.onProductUpdated = onProductUpdated
-    self.onException = onException
-  }
+  private let onProductsUpdated: SwiftCallback
+  private let onTransactionsUpdated: SwiftCallback
+  private let onException: SwiftCallback
 
   private var productsRequest: SKProductsRequest?
+  private var products: [String: SKProduct] = [:]
 
-  func requestProducts(
-    _ productIDs: Set<String>
+  init(
+    onProductsUpdated: SwiftCallback,
+    onTransactionsUpdated: SwiftCallback,
+    onException: SwiftCallback
   ) {
-    print(Tag, "requestProducts: ", productIDs)
-
-    productsRequest = SKProductsRequest(productIdentifiers: productIDs)
-    productsRequest!.delegate = self
-    productsRequest!.start()
+    self.onProductsUpdated = onProductsUpdated
+    self.onTransactionsUpdated = onTransactionsUpdated
+    self.onException = onException
+    super.init()
+    SKPaymentQueue.default().add(self)
+  }
+}
+// MARK: Impl SKPaymentTransactionObserver
+extension InAppPurchaseHandler: SKPaymentTransactionObserver {
+  func paymentQueue(
+    _ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]
+  ) {
+    var receiptString: String?
+    if let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
+      FileManager.default.fileExists(atPath: appStoreReceiptURL.path)
+    {
+      do {
+        let receiptData = try Data(contentsOf: appStoreReceiptURL, options: .alwaysMapped)
+        receiptString = receiptData.base64EncodedString(options: [])
+      } catch {
+        os_log(
+          .debug, log: log, "Couldn't read receipt data with error: %s", error.localizedDescription)
+      }
+    }
+    os_log(
+      .debug, log: log, "paymentQueue updatedTransactions receiptString: %s", receiptString ?? "")
+    var skTransactions: [[String: Any?]] = []
+    for transaction in transactions {
+      skTransactions.append([
+        "productId": transaction.payment.productIdentifier,
+        "transactionId": transaction.transactionIdentifier,
+        "transactionDate": transaction.transactionDate?.timeIntervalSince1970,
+        "status": transaction.transactionState.rawValue,
+        "error": transaction.error?.localizedDescription,
+        "applicationUserName": transaction.payment.applicationUsername,
+        "originalIdentifier": transaction.original?.transactionIdentifier,
+        "receiptData": receiptString,
+      ])
+      if transaction.transactionState == .purchased || transaction.transactionState == .restored {
+        SKPaymentQueue.default().finishTransaction(transaction)
+      }
+    }
+    emitTransactionsUpdated(skTransactions)
   }
 
+  // Failed to restore purchase
+  func paymentQueue(
+    _ queue: SKPaymentQueue,
+    restoreCompletedTransactionsFailedWithError error: any Error
+  ) {
+    os_log(.debug, log: log, "paymentQueue restoreCompletedTransactionsFailedWithError")
+    emitException(
+      type: "RestorePurchases",
+      code: 3,
+      message: error.localizedDescription
+    )
+  }
+  
+  func paymentQueueRestoreCompletedTransactionsFinished(_ queue: SKPaymentQueue) {
+    os_log(.debug, log: log, "paymentQueueRestoreCompletedTransactionsFinished")
+  }
+}
+// MARK: Impl SKProductsRequestDelegate
+extension InAppPurchaseHandler: SKProductsRequestDelegate {
   func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
-    // Handle valid products
+    os_log(
+      .debug, log: log, "productsRequest didReceive: %s",
+      response.products.map { $0.productIdentifier }.joined())
     var skProducts: [[String: Any?]] = []
     for product in response.products {
       products.updateValue(product, forKey: product.productIdentifier)
@@ -198,41 +201,34 @@ class ProductRequest: NSObject, SKProductsRequestDelegate {
         "billingPeriodUnit": productUnitToString(product.subscriptionPeriod?.unit),
       ])
     }
-    emitCallback(data: skProducts, callback: onProductUpdated)
+    emitProductsUpdated(skProducts)
   }
 
   func productsRequest(_ request: SKProductsRequest, didFailWithError error: Error) {
     // Handle request failure
-    print(Tag, "products request error: ", error.localizedDescription)
-    emitException(
-      type: "QueryProducts", code: 1, message: error.localizedDescription, callback: onException)
+    os_log(.debug, log: log, "products request error: %s", error.localizedDescription)
+    emitException(type: "QueryProducts", code: 1, message: error.localizedDescription)
   }
 
   func request(_ request: SKRequest, didFailWithError error: any Error) {
-    print(Tag, "products request - didFailWithError: ", error.localizedDescription)
-    emitException(
-      type: "QueryProducts", code: 2, message: error.localizedDescription, callback: onException)
+    os_log(.debug, log: log, "products request - didFailWithError: %s", error.localizedDescription)
+    emitException(type: "QueryProducts", code: 2, message: error.localizedDescription)
   }
 }
+// MARK: Public methods
+extension InAppPurchaseHandler {
+  func requestProducts(_ productIds: Set<String>) {
+    os_log(.debug, log: log, "requestProducts: %s", productIds.joined())
 
-class PaymentTransactionObserver: NSObject, SKPaymentTransactionObserver {
-  static var shared: PaymentTransactionObserver?
-  private var onTransactionUpdated: SwiftCallback?
-  private var onException: SwiftCallback?
-  var cachedTransactions: [String: SKPaymentTransaction] = [:]
-
-  init(onTransactionUpdated: SwiftCallback, onException: SwiftCallback) {
-    super.init()
-    self.onTransactionUpdated = onTransactionUpdated
-    self.onException = onException
-    SKPaymentQueue.default().add(self)
+    productsRequest = SKProductsRequest(productIdentifiers: productIds)
+    productsRequest!.delegate = self
+    productsRequest!.start()
   }
 
   func purchase(productId: String, quantity: Int, applicationUserName: String) {
-    let product = ProductRequest.shared?.products[productId]
+    let product = products[productId]
     if product == nil {
-      emitException(
-        type: "Purchase", code: 4, message: "Product does not exist.", callback: onException)
+      emitException(type: "Purchase", code: 4, message: "Product does not exist.")
     } else {
       let payment = SKMutablePayment(product: product!)
       if !applicationUserName.isEmpty {
@@ -243,58 +239,98 @@ class PaymentTransactionObserver: NSObject, SKPaymentTransactionObserver {
     }
   }
 
-  func restorePurchases(applicationUserName: String?) {
-    SKPaymentQueue.default().restoreCompletedTransactions(
-      withApplicationUsername: applicationUserName)
+  func restore(applicationUserName: String) {
+    if applicationUserName.isEmpty {
+      SKPaymentQueue.default().restoreCompletedTransactions()
+    } else {
+      SKPaymentQueue.default().restoreCompletedTransactions(
+        withApplicationUsername: applicationUserName)
+    }
+  }
+}
+// MARK: Emit rust methods
+extension InAppPurchaseHandler {
+  private func emitProductsUpdated(_ data: [[String: Any?]]) {
+    emitCallback(
+      data: data,
+      callback: onProductsUpdated
+    )
   }
 
-  func completePruchase(transactionId: String) {
-    let transaction = cachedTransactions[transactionId]
-    if transaction != nil {
-      SKPaymentQueue.default().finishTransaction(transaction!)
+  private func emitTransactionsUpdated(_ data: [[String: Any?]]) {
+    emitCallback(
+      data: data,
+      callback: onTransactionsUpdated
+    )
+  }
+
+  private func emitException(type: String, code: Int8, message: String) {
+    emitCallback(
+      data: [
+        "type": type,
+        "payload": [
+          "code": code,
+          "message": message,
+        ],
+      ],
+      callback: onException
+    )
+  }
+  private func emitCallback(data: Any, callback: SwiftCallback) {
+    do {
+      let serializedData = try JSONSerialization.data(withJSONObject: data)
+      let dataPointer = serializedData.withUnsafeBytes { $0.baseAddress }
+      let dataSize = serializedData.count
+      callback(dataPointer, Int32(dataSize))
+    } catch let jsonException {
+      os_log(.error, log: log, "JSON parse error: %s", jsonException.localizedDescription)
+    }
+  }
+}
+// MARK: Util Methods
+extension InAppPurchaseHandler {
+  private func priceLocaleCurrencyCode(_ priceLocale: Locale) -> String {
+    let numberFormatter = NumberFormatter()
+    numberFormatter.locale = priceLocale
+    return numberFormatter.currencyCode
+  }
+
+  private func productUnitToString(_ unit: SKProduct.PeriodUnit?) -> String? {
+    switch unit {
+    case .day:
+      return "Day"
+    case .week:
+      return "Week"
+    case .month:
+      return "Month"
+    case .year:
+      return "Year"
+    default:
+      return nil
     }
   }
 
-  func paymentQueue(
-    _ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]
-  ) {
-    var skTransactions: [[String: Any?]] = []
-    for transaction in transactions {
-      if transaction.transactionIdentifier != nil {
-        // purchased or restored
-        cachedTransactions.updateValue(transaction, forKey: transaction.transactionIdentifier!)
-      }
-      var receiptString: String? = nil
-      if let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
-        FileManager.default.fileExists(atPath: appStoreReceiptURL.path)
-      {
-        do {
-          let receiptData = try Data(contentsOf: appStoreReceiptURL, options: .alwaysMapped)
-          receiptString = receiptData.base64EncodedString(options: [])
-        } catch {
-          print(Tag, "Couldn't read receipt data with error: " + error.localizedDescription)
-        }
-      }
-      skTransactions.append([
-        "productId": transaction.payment.productIdentifier,
-        "transactionId": transaction.transactionIdentifier,
-        "transactionDate": transaction.transactionDate,
-        "status": transaction.transactionState,
-        "error": transaction.error?.localizedDescription,
-        "applicationUserName": transaction.payment.applicationUsername,
-        "originalIdentifier": transaction.original?.transactionIdentifier,
-        "receiptData": receiptString,
-      ])
-      emitCallback(data: skTransactions, callback: onTransactionUpdated)
+  private func productPaymentModeToString(_ mode: SKProductDiscount.PaymentMode?) -> String? {
+    switch mode {
+    case .payAsYouGo:
+      return "PayAsYouGo"
+    case .payUpFront:
+      return "UpFront"
+    case .freeTrial:
+      return "FreeTrial"
+    default:
+      return nil
     }
   }
 
-  // Failed to restore purchase
-  func paymentQueue(
-    _ queue: SKPaymentQueue, restoreCompletedTransactionsFailedWithError error: any Error
-  ) {
-    emitException(
-      type: "RestorePurchases", code: 3, message: error.localizedDescription,
-      callback: onException)
+  private func productDiscountTypeToString(_ type: SKProductDiscount.`Type`) -> String? {
+    switch type {
+    case .introductory:
+      return "Introductory"
+    case .subscription:
+      return "Subscription"
+    default:
+      return nil
+    }
   }
 }
