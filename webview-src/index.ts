@@ -28,9 +28,9 @@ export async function countryCode() {
  */
 export async function initialize(
   listenCallback: {
-    onProductsUpdated: (products: Product[]) => void;
-    onTransactionsUpdated: (transactions: Transaction[]) => void
-    onException: (err: Exception) => void
+    onProductsUpdated: (products: Product[]) => void | Promise<void>;
+    onTransactionsUpdated: (transactions: Transaction[]) => void | Promise<void>
+    onException: (err: Exception) => void | Promise<void>
   }) {
   await listen<Product[]>('plugin_iap:products-updated', (e) => {
     listenCallback.onProductsUpdated(e.payload)
