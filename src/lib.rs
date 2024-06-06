@@ -9,7 +9,9 @@ use tauri::{
     AppHandle, Manager, Runtime, State, Window, Wry,
 };
 use transaction::Transaction;
-use util::{emit_event, emit_exception, EmitEvents, IAPResult, SwiftCallback, APP_HANDLE};
+use util::{
+    emit_event, emit_exception, emit_void, EmitEvents, IAPResult, SwiftCallback, APP_HANDLE,
+};
 
 mod exception;
 mod product;
@@ -19,14 +21,28 @@ mod util;
 #[derive(Default)]
 struct IAPState(Mutex<bool>);
 
-swift!(fn swift_initialize(on_products_updated: SwiftCallback,on_transactions_updated: SwiftCallback,on_exception: SwiftCallback) -> Bool);
+swift!(fn swift_initialize(
+        on_products_updated: SwiftCallback,
+        on_transactions_updated: SwiftCallback,
+        on_restore_completed: SwiftCallback,
+        on_exception: SwiftCallback
+    ) -> Bool
+);
 #[command]
-fn initialize<R: Runtime>(_app: AppHandle<R>, _window: Window<R>, state: State<'_, IAPState>) -> IAPResult {
+fn initialize<R: Runtime>(
+    _app: AppHandle<R>,
+    _window: Window<R>,
+    state: State<'_, IAPState>,
+) -> IAPResult {
     unsafe extern "C" fn products_updated_callback(arg1: *const c_void, size: i32) {
         emit_event::<Vec<Product>>(EmitEvents::ProductsUpdated, arg1, size);
     }
     unsafe extern "C" fn transactions_updated_callback(arg1: *const c_void, size: i32) {
         emit_event::<Vec<Transaction>>(EmitEvents::TransactionUpdated, arg1, size)
+    }
+    unsafe extern "C" fn restore_completed_callback(_arg1: *const c_void, _size: i32) {
+        // swift send an empty array
+        emit_void(EmitEvents::RestoreCompleted)
     }
     unsafe extern "C" fn exception_callback(arg1: *const c_void, size: i32) {
         emit_exception(arg1, size);
@@ -35,6 +51,7 @@ fn initialize<R: Runtime>(_app: AppHandle<R>, _window: Window<R>, state: State<'
         swift_initialize(
             SwiftCallback(products_updated_callback),
             SwiftCallback(transactions_updated_callback),
+            SwiftCallback(restore_completed_callback),
             SwiftCallback(exception_callback),
         )
     };
@@ -116,6 +133,23 @@ fn request_pruchase<R: Runtime>(
     Ok(JsonValue::Null)
 }
 
+swift!(fn swift_finish_transaction(transaction_id: SRString));
+#[command]
+fn finish_transaction<R: Runtime>(
+    _app: AppHandle<R>,
+    _window: Window<R>,
+    state: State<'_, IAPState>,
+    transaction_id: String,
+) -> IAPResult {
+    if !state.0.lock().unwrap().to_owned() {
+        return Err("Not initialized.".to_owned());
+    }
+    unsafe {
+        swift_finish_transaction(transaction_id.as_str().into());
+    }
+    Ok(JsonValue::Null)
+}
+
 /// Initializes the plugin.
 pub fn init() -> TauriPlugin<Wry> {
     Builder::new("iap")
@@ -126,6 +160,7 @@ pub fn init() -> TauriPlugin<Wry> {
             query_products,
             restore_purchases,
             request_pruchase,
+            finish_transaction
         ])
         .setup(|app| {
             APP_HANDLE.set(Mutex::new(app.to_owned())).unwrap();

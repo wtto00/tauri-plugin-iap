@@ -9,18 +9,20 @@ export declare function canMakePayments(): Promise<boolean>;
  * @see https://developer.apple.com/documentation/storekit/skstorefront
  */
 export declare function countryCode(): Promise<string | null>;
+declare type MaybePromise<T> = T | Promise<T>;
 /**
  * Initialize the plugin.
  *
  * If the initialization is not successful,
- * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase` interfaces.
+ * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase`, `finishTransaction` interfaces.
  * @param listenCallback Listen to the callback result of native event
  * @returns Has the initialization been successful
  */
 export declare function initialize(listenCallback: {
-    onProductsUpdated: (products: Product[]) => void;
-    onTransactionsUpdated: (transactions: Transaction[]) => void;
-    onException: (err: Exception) => void;
+    onProductsUpdated: (products: Product[]) => MaybePromise<void>;
+    onTransactionsUpdated: (transactions: Transaction[]) => MaybePromise<void>;
+    onRestoreCompleted?: () => MaybePromise<void>;
+    onException: (err: Exception) => MaybePromise<void>;
 }): Promise<boolean>;
 /**
  * Query product details for the given set of IDs.
@@ -44,6 +46,14 @@ export declare function restorePurchases(applicationUserName?: string): Promise<
  * @param applicationUserName Used to mark `restorePurchases`.
  */
 export declare function requestPruchase(productIdentifier: string, quantity?: number, applicationUserName?: string): Promise<void>;
+/**
+ * If a transaction's status is `TransactionStatus.purchased` or `TransactionStatus.restored`,
+ * you must call this method to finish this transaction.
+ *
+ * if this is not called a transaction will keep being triggered automatically on app start.
+ * @param transactionId Transaction identifier.
+ */
+export declare function finishTransaction(transactionId: string): Promise<void>;
 export declare enum TransactionStatus {
     /**
      * The purchase process is pending.
@@ -81,7 +91,7 @@ export interface Transaction {
      * Transaction identifier.
      * Only valid if state is SKPaymentTransactionStatePurchased or SKPaymentTransactionStateRestored.
      */
-    transactionId?: String;
+    transactionId?: string;
     /** The product identifier of the purchase. */
     productId: string;
     /**
@@ -89,7 +99,7 @@ export interface Transaction {
      *
      * The value is `null` if `status` is not `TransactionStatus.purchased` or `TransactionStatus.restored`.
      */
-    transactionDate?: String;
+    transactionDate?: number;
     /** The status that this transaction is currently on. */
     status: TransactionStatus;
     /** The error details when the [status] is [TransactionStatus.failed]. */
@@ -175,7 +185,7 @@ export declare enum ExceptionType {
     RestorePurchases = "RestorePurchases",
     Purchase = "Purchase",
     TransactionUpdated = "TransactionUpdated",
-    Unknown = "Unknown"
+    JsonParse = "JsonParse"
 }
 export interface Exception {
     type: ExceptionType;
@@ -184,3 +194,4 @@ export interface Exception {
         message: string;
     };
 }
+export {};

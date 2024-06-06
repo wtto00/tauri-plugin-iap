@@ -25,18 +25,21 @@ pub static APP_HANDLE: OnceCell<Mutex<AppHandle>> = OnceCell::new();
 pub enum EmitEvents {
     ProductsUpdated,
     TransactionUpdated,
+    RestoreCompleted,
 }
 impl EmitEvents {
     fn get_name(&self) -> &'static str {
         match self {
             EmitEvents::ProductsUpdated => "plugin_iap:products-updated",
             EmitEvents::TransactionUpdated => "plugin_iap:transactions-updated",
+            EmitEvents::RestoreCompleted => "plugin_iap:restore-completed",
         }
     }
     fn get_exception_type(&self) -> ExceptionType {
         match self {
             EmitEvents::ProductsUpdated => ExceptionType::QueryProducts,
             EmitEvents::TransactionUpdated => ExceptionType::TransactionUpdated,
+            EmitEvents::RestoreCompleted => ExceptionType::RestorePurchases,
         }
     }
 }
@@ -61,13 +64,22 @@ where
                             r#type: event.get_exception_type(),
                             payload: ExceptionError {
                                 code: -1,
-                                message: format!("Failed to parse json: {}.", e),
+                                message: format!("Failed to parse json: {}. {}", e, data_str),
                             },
                         },
                     )
                     .unwrap();
             }
         }
+    }
+}
+
+pub fn emit_void(event: EmitEvents) {
+    let app = APP_HANDLE.get().unwrap().lock();
+    if let Ok(app_handle) = app {
+        app_handle
+            .emit_all(event.get_name(), Option::<usize>::None)
+            .unwrap();
     }
 }
 

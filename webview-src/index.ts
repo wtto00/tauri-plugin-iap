@@ -18,25 +18,31 @@ export async function countryCode() {
   return await invoke<string | null>('plugin:iap|country_code')
 }
 
+type MaybePromise<T> = T | Promise<T>
+
 /**
  * Initialize the plugin. 
  * 
  * If the initialization is not successful, 
- * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase` interfaces.
+ * you cannot call the `startQueryProducts`, `restorePurchases`, `requestPurchase`, `finishTransaction` interfaces.
  * @param listenCallback Listen to the callback result of native event
  * @returns Has the initialization been successful
  */
 export async function initialize(
   listenCallback: {
-    onProductsUpdated: (products: Product[]) => void | Promise<void>;
-    onTransactionsUpdated: (transactions: Transaction[]) => void | Promise<void>
-    onException: (err: Exception) => void | Promise<void>
+    onProductsUpdated: (products: Product[]) => MaybePromise<void>;
+    onTransactionsUpdated: (transactions: Transaction[]) => MaybePromise<void>
+    onRestoreCompleted?: () => MaybePromise<void>
+    onException: (err: Exception) => MaybePromise<void>
   }) {
   await listen<Product[]>('plugin_iap:products-updated', (e) => {
     listenCallback.onProductsUpdated(e.payload)
   })
   await listen<Transaction[]>('plugin_iap:transactions-updated', (e) => {
     listenCallback.onTransactionsUpdated(e.payload)
+  })
+  await listen<Transaction[]>('plugin_iap:restore-completed', (e) => {
+    listenCallback.onRestoreCompleted?.()
   })
   await listen<Exception>('plugin_iap:exception', (e) => {
     listenCallback.onException(e.payload)
@@ -73,6 +79,17 @@ export async function restorePurchases(applicationUserName?: string) {
  */
 export async function requestPruchase(productIdentifier: string, quantity: number = 1, applicationUserName?: string) {
   await invoke<null>('plugin:iap|request_pruchase', { productIdentifier, quantity, applicationUserName })
+}
+
+/**
+ * If a transaction's status is `TransactionStatus.purchased` or `TransactionStatus.restored`,
+ * you must call this method to finish this transaction.
+ * 
+ * if this is not called a transaction will keep being triggered automatically on app start.
+ * @param transactionId Transaction identifier.
+ */
+export async function finishTransaction(transactionId: string) {
+  await invoke<null>('plugin:iap|finish_transaction', { transactionId })
 }
 
 export enum TransactionStatus {
@@ -112,7 +129,7 @@ export interface Transaction {
    * Transaction identifier.
    * Only valid if state is SKPaymentTransactionStatePurchased or SKPaymentTransactionStateRestored.
    */
-  transactionId?: String
+  transactionId?: string
   /** The product identifier of the purchase. */
   productId: string
   /**
