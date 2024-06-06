@@ -4,20 +4,31 @@ A plugin of In App Purchase for Tauri on MacOS.
 
 ## Installation
 
-Add dependencies in file `src-tauri/Cargo.toml`:
+- Add dependencies in file `src-tauri/Cargo.toml`:
 
-```yaml
-[target.'cfg(target_os = "macos")'.dependencies]
-tauri-plugin-iap = { git = "https://github.com/wtto00/tauri-plugin-iap" }
-```
+  ```yaml
+  [target.'cfg(target_os = "macos")'.dependencies]
+  tauri-plugin-iap = { git = "https://github.com/wtto00/tauri-plugin-iap" }
+  ```
 
-Add dependencies of front-end:
+- Add dependencies of front-end:
 
-```shell
-pnpm add https://github.com/wtto00/tauri-plugin-iap.git
-# yarn add https://github.com/wtto00/tauri-plugin-iap.git
-# npm i --save https://github.com/wtto00/tauri-plugin-iap.git
-```
+  ```shell
+  pnpm add https://github.com/wtto00/tauri-plugin-iap.git
+  # yarn add https://github.com/wtto00/tauri-plugin-iap.git
+  # npm i --save https://github.com/wtto00/tauri-plugin-iap.git
+  ```
+
+- Enable plugins in `src-tauri/main.rs`
+
+  ```rs
+  fn main() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_iap::init()) // Add this line
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+  }
+  ```
 
 ## Prepare
 
