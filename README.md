@@ -1,4 +1,4 @@
-# Tauri Plugin iap
+# Tauri Plugin IAP
 
 A plugin of In App Purchase for Tauri on MacOS.
 
