@@ -24,7 +24,13 @@ A plugin of In App Purchase for Tauri on MacOS.
   ```rs
   fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_iap::init()) // Add this line
+        .setup(move |app| {
+            // Add this line
+            #[cfg(target_os="macos")]
+            app.app_handle().plugin(plugins::refister_iap())?;
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
   }
