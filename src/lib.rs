@@ -126,7 +126,7 @@ fn request_pruchase<R: Runtime>(
     unsafe {
         swift_request_pruchase(
             product_identifier.as_str().into(),
-            quantity.into(),
+            quantity,
             application_user_name.unwrap_or_default().as_str().into(),
         );
     }
