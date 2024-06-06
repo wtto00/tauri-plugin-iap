@@ -16,6 +16,10 @@ jobs:
       fail-fast: false
 
     steps:
+      - uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "5.10"
+
       - uses: actions/checkout@v3
 
       - name: Install clippy with stable toolchain
