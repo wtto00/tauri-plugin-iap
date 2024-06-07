@@ -79,7 +79,7 @@ const product_identifiers = ["product_id_1", "product_id_2"];
 let products_validated = [];
 
 // TODO: Send receiptData to your own server api to validate the transaction is valid or not.
-// You should cache verified receiptData or transactionId to avoid repeatedly verifying the same data.
+// You should cache verified receiptData or transactionId to avoid repeatedly verifying the same data. About caching transactionId, you can refer to https://stackoverflow.com/questions/45705069/ios-storekit-transaction-identifier-does-not-match-receipt
 function validate(transaction: Transaction) {
   return true;
 }
