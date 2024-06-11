@@ -240,11 +240,7 @@ Please replace the `COMPANY_NAME`, `TEAM_ID`, `APP_NAME`, `APP_IDENTIFIER` with 
          <true/>
          <key>com.apple.security.network.client</key>
          <true/>
-         <key>com.apple.security.network.server</key>
-         <true/>
          <key>com.apple.security.files.user-selected.read-write</key>
-         <true/>
-         <key>com.apple.security.files.downloads.read-write</key>
          <true/>
          <key>com.apple.application-identifier</key>
          <string>TEAM_ID.APP_IDENTIFIER</string>
@@ -253,6 +249,8 @@ Please replace the `COMPANY_NAME`, `TEAM_ID`, `APP_NAME`, `APP_IDENTIFIER` with 
        </dict>
      </plist>
      ```
+
+     The list of entitlements can be found [here](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/AboutEntitlements.html#//apple_ref/doc/uid/TP40011195-CH1-SW1). If you want to publish an app on the App Store, you need to ensure that it does not include unused entitlements.
 
 2. Execute the following script
 
