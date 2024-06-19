@@ -8,7 +8,7 @@ A plugin of In App Purchase for Tauri on MacOS.
 
   ```yaml
   [target.'cfg(target_os = "macos")'.dependencies]
-  tauri-plugin-iap = { git = "https://github.com/wtto00/tauri-plugin-iap" }
+  tauri-plugin-iap = { git = "https://github.com/wtto00/tauri-plugin-iap", tag = "v0.0.1" }
   ```
 
 - Add dependencies of front-end:
@@ -27,7 +27,7 @@ A plugin of In App Purchase for Tauri on MacOS.
         .setup(move |app| {
             // Add this line
             #[cfg(target_os="macos")]
-            app.app_handle().plugin(plugins::refister_iap())?;
+            app.app_handle().plugin(tauri_plugin_iap::init())?;
 
             Ok(())
         })
